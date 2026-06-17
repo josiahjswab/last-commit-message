@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-const { execFileSync } = require("node:child_process");
+const { execFileSync, spawnSync } = require("node:child_process");
 const fs = require("node:fs");
 const path = require("node:path");
 const { pathToFileURL } = require("node:url");
@@ -18,6 +18,120 @@ const BRIGHT_GREEN = "\u001b[92m";
 const BRIGHT_MAGENTA = "\u001b[95m";
 const BRIGHT_YELLOW = "\u001b[93m";
 const WHITE = "\u001b[97m";
+const COMMIT_EMOJIS = [
+  "🍎",
+  "🍊",
+  "🍋",
+  "🍐",
+  "🍇",
+  "🍓",
+  "🍒",
+  "🍑",
+  "🍍",
+  "🥝",
+  "🥑",
+  "🌶️",
+  "🌽",
+  "🥕",
+  "🥨",
+  "🧀",
+  "🍞",
+  "🥐",
+  "🍕",
+  "🌮",
+  "🍜",
+  "🍣",
+  "🍩",
+  "🍪",
+  "☕",
+  "🚗",
+  "🚀",
+  "🛠️",
+  "💎",
+  "🔑",
+  "🎯",
+  "🎲",
+  "🎸",
+  "🎧",
+  "🏆",
+  "⚙️",
+  "📌",
+  "📎",
+  "📦",
+  "📘",
+  "📙",
+  "📗",
+  "📕",
+  "🔵",
+  "🟢",
+  "🟡",
+  "🟣",
+  "🟠",
+  "⭐",
+  "🌙",
+  "☀️",
+  "⚡",
+  "🔥",
+  "❄️",
+  "🌊",
+  "🌲",
+  "🪵",
+  "🧩",
+  "🧭",
+  "🧲",
+  "🔨",
+  "🪛",
+  "🧪",
+  "🧬",
+  "🧰",
+  "🧯",
+  "🪄",
+  "🧿",
+  "🪙",
+  "💡",
+  "🔦",
+  "🕯️",
+  "🧊",
+  "🪨",
+  "🪐",
+  "🌎",
+  "🌕",
+  "🌗",
+  "🌀",
+  "🌈",
+  "☂️",
+  "⛅",
+  "⛈️",
+  "🌤️",
+  "🪁",
+  "🛸",
+  "🚁",
+  "🚂",
+  "🚜",
+  "🏗️",
+  "🏭",
+  "🏛️",
+  "🧱",
+  "🪜",
+  "🧵",
+  "🪡",
+  "🧶",
+  "🎨",
+  "🖌️",
+  "✏️",
+  "🖊️",
+  "🗂️",
+  "🗃️",
+  "🧾",
+  "📊",
+  "📈",
+  "🔍",
+  "🔬",
+  "🧮",
+  "🎹",
+  "🥁",
+  "🎺",
+];
 const EXTENSION_COLOR_MAP = new Map([
   ["xaml", BRIGHT_GREEN],
   ["xml", GREEN],
@@ -45,8 +159,8 @@ const EXTENSION_COLOR_MAP = new Map([
 ]);
 
 function printUsage() {
-  console.log("Usage: node last-commit-message.js [--limit <count>] [--page <number>] [--page-size <count>] [--links <plain|path|file|vscode|cursor|visualstudio>] [--ext <extensions>] [--path <path>] [repo-path]");
-  console.log("Example: node last-commit-message.js --page 2 --page-size 20 --links cursor --path environments/prod --ext xaml,cs,js /path/to/repo");
+  console.log("Usage: node last-commit-message.js [--limit <count>] [--page <number>] [--page-size <count>] [--links <plain|path|file|vscode|cursor|visualstudio>] [--open <cursor|code|vscode|visualstudio|none>] [--ext <extensions>] [--path <path>] [repo-path]");
+  console.log("Example: node last-commit-message.js --open cursor --page-size 20 --links path --path environments/prod --ext xaml,cs,js /path/to/repo");
 }
 
 function parseArgs(args) {
@@ -54,6 +168,7 @@ function parseArgs(args) {
     extensions: [],
     limit: 100,
     linkMode: "path",
+    openMode: "cursor",
     page: 1,
     pageSpecified: false,
     pageSize: 20,
@@ -118,6 +233,18 @@ function parseArgs(args) {
       continue;
     }
 
+    if (arg === "--open" || arg === "--editor") {
+      const value = args[index + 1];
+
+      if (!value) {
+        throw new Error(`Missing value for ${arg}`);
+      }
+
+      options.openMode = parseOpenMode(value);
+      index += 1;
+      continue;
+    }
+
     if (arg === "--page-size" || arg === "--per-page") {
       const value = args[index + 1];
 
@@ -170,6 +297,16 @@ function parseArgs(args) {
     if (arg.startsWith("--page=")) {
       options.page = parsePositiveInteger(arg.slice("--page=".length), "page");
       options.pageSpecified = true;
+      continue;
+    }
+
+    if (arg.startsWith("--open=")) {
+      options.openMode = parseOpenMode(arg.slice("--open=".length));
+      continue;
+    }
+
+    if (arg.startsWith("--editor=")) {
+      options.openMode = parseOpenMode(arg.slice("--editor=".length));
       continue;
     }
 
@@ -256,6 +393,26 @@ function parseLinkMode(value) {
   return normalizedLinkMode;
 }
 
+function parseOpenMode(value) {
+  const openMode = value.trim().toLowerCase();
+  const aliases = {
+    code: "vscode",
+    none: "",
+    off: "",
+    vs: "visualstudio",
+    visual: "visualstudio",
+    "visual-studio": "visualstudio",
+  };
+  const normalizedOpenMode = aliases[openMode] ?? openMode;
+  const allowed = new Set(["", "vscode", "cursor", "visualstudio"]);
+
+  if (!allowed.has(normalizedOpenMode)) {
+    throw new Error(`Unknown open mode: ${value}`);
+  }
+
+  return normalizedOpenMode;
+}
+
 function getLastChangedFiles(repoPath, extensions, paths, limit) {
   const pathspecs = buildPathspecs(extensions, paths);
   const files = [];
@@ -278,7 +435,7 @@ function getLastChangedFiles(repoPath, extensions, paths, limit) {
         }
 
         seen.add(distinctKey);
-        files.push(file);
+        files.push({ commit: hash, file });
 
         if (files.length >= limit) {
           return files;
@@ -373,11 +530,12 @@ function buildPathspecs(extensions, paths) {
   });
 }
 
-function formatRow(file, repoPath, linkMode, rowNumber, width) {
-  const color = colorForExtension(file);
+function formatRow(item, repoPath, linkMode, rowNumber, width, commitEmojiMap) {
+  const color = colorForExtension(item.file);
+  const commitMark = commitEmojiMap.get(item.commit) || "▫️";
   const number = `${String(rowNumber).padStart(width, " ")}.`;
 
-  return `${DIM}${number}${RESET} ${color}${formatFile(file, repoPath, linkMode)}${RESET}`;
+  return `${DIM}${number}${RESET} ${commitMark} ${color}${formatFile(item.file, repoPath, linkMode)}${RESET}`;
 }
 
 function formatFile(file, repoPath, linkMode) {
@@ -407,6 +565,47 @@ function colorForExtension(file) {
   return EXTENSION_COLOR_MAP.get(extension) || DIM;
 }
 
+function buildCommitEmojiMap(files) {
+  const emojiMap = new Map();
+  const used = new Set();
+
+  for (const item of files) {
+    if (emojiMap.has(item.commit)) {
+      continue;
+    }
+
+    const emoji = nextCommitEmoji(item.commit, used);
+    emojiMap.set(item.commit, emoji);
+    used.add(emoji);
+  }
+
+  return emojiMap;
+}
+
+function nextCommitEmoji(commit, used) {
+  const startIndex = commitEmojiIndex(commit);
+
+  for (let offset = 0; offset < COMMIT_EMOJIS.length; offset += 1) {
+    const emoji = COMMIT_EMOJIS[(startIndex + offset) % COMMIT_EMOJIS.length];
+
+    if (!used.has(emoji)) {
+      return emoji;
+    }
+  }
+
+  return `#${used.size + 1}`;
+}
+
+function commitEmojiIndex(commit) {
+  let hash = 0;
+
+  for (const char of commit) {
+    hash = (hash * 31 + char.charCodeAt(0)) >>> 0;
+  }
+
+  return hash % COMMIT_EMOJIS.length;
+}
+
 function editorUri(scheme, absolutePath) {
   return `${scheme}://file/${encodeURI(absolutePath.replace(/\\/g, "/"))}`;
 }
@@ -429,7 +628,7 @@ function describeFilters(options) {
   return filters.length > 0 ? ` for ${filters.join("; ")}` : "";
 }
 
-function displayPage(files, options, page) {
+function displayPage(files, options, page, commitEmojiMap) {
   const pageStart = (page - 1) * options.pageSize;
   const pageFiles = files.slice(pageStart, pageStart + options.pageSize);
   const totalPages = Math.max(1, Math.ceil(files.length / options.pageSize));
@@ -445,14 +644,17 @@ function displayPage(files, options, page) {
   console.log(`${DIM}Showing ${firstRowNumber}-${pageStart + pageFiles.length} of ${files.length} changed files. Page ${page}/${totalPages}.${RESET}`);
 
   for (let index = 0; index < pageFiles.length; index += 1) {
-    console.log(formatRow(pageFiles[index], options.repoPath, options.linkMode, firstRowNumber + index, rowNumberWidth));
+    console.log(formatRow(pageFiles[index], options.repoPath, options.linkMode, firstRowNumber + index, rowNumberWidth, commitEmojiMap));
   }
 
   return page < totalPages;
 }
 
-function waitForNextPage() {
-  process.stdout.write(`${DIM}Press Enter for next page, or q then Enter to quit...${RESET}`);
+function waitForNextAction(files, options, hasNextPage) {
+  const prompt = hasNextPage
+    ? "Enter next page, number opens file, q quits..."
+    : "Number opens file, Enter or q quits...";
+  process.stdout.write(`${DIM}${prompt}${RESET}`);
 
   const buffer = Buffer.alloc(1);
   let input = "";
@@ -469,26 +671,94 @@ function waitForNextPage() {
 
     if (char === "\n" || char === "\r") {
       process.stdout.write("\n");
-      return input.trim().toLowerCase() !== "q";
+      return parseAction(input, files, options, hasNextPage);
     }
 
     input += char;
   }
 }
 
+function parseAction(input, files, options, hasNextPage) {
+  const value = input.trim().toLowerCase();
+
+  if (value === "") {
+    return hasNextPage ? "next" : "quit";
+  }
+
+  if (value === "q" || value === "quit" || value === "exit") {
+    return "quit";
+  }
+
+  if (/^\d+$/.test(value)) {
+    const rowNumber = Number.parseInt(value, 10);
+
+    if (rowNumber < 1 || rowNumber > files.length) {
+      console.error(`Error: row ${rowNumber} is out of range. Choose 1-${files.length}.`);
+      return "stay";
+    }
+
+    openFile(files[rowNumber - 1].file, options);
+    return "stay";
+  }
+
+  console.error(`Error: unknown input: ${input.trim()}`);
+  return "stay";
+}
+
+function openFile(file, options) {
+  if (!options.openMode) {
+    console.error("Error: no editor configured. Use --open cursor, --open vscode, or --open visualstudio.");
+    return;
+  }
+
+  const absolutePath = path.resolve(options.repoPath, file);
+  const command = editorCommand(options.openMode);
+  const result = spawnSync(command, [absolutePath], {
+    shell: false,
+    stdio: "ignore",
+    windowsHide: true,
+  });
+
+  if (result.error) {
+    console.error(`Error: unable to open ${absolutePath} with ${command}: ${result.error.message}`);
+  }
+}
+
+function editorCommand(openMode) {
+  if (openMode === "vscode") {
+    return "code";
+  }
+
+  if (openMode === "visualstudio") {
+    return "devenv";
+  }
+
+  return openMode;
+}
+
 function displayFiles(files, options) {
+  const commitEmojiMap = buildCommitEmojiMap(files);
+
   if (options.pageSpecified || !process.stdin.isTTY) {
-    displayPage(files, options, options.page);
+    displayPage(files, options, options.page, commitEmojiMap);
     return;
   }
 
   const totalPages = Math.max(1, Math.ceil(files.length / options.pageSize));
 
   for (let page = 1; page <= totalPages; page += 1) {
-    const hasNextPage = displayPage(files, options, page);
+    const hasNextPage = displayPage(files, options, page, commitEmojiMap);
 
-    if (!hasNextPage || !waitForNextPage()) {
-      return;
+    while (true) {
+      const action = waitForNextAction(files, options, hasNextPage);
+
+      if (action === "quit") {
+        return;
+      }
+
+      if (action === "next") {
+        break;
+      }
     }
   }
 }
