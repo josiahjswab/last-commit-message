@@ -5,10 +5,23 @@ const path = require("node:path");
 const { pathToFileURL } = require("node:url");
 
 const COMMIT_BATCH_SIZE = 200;
+const RESET = "\u001b[0m";
+const DIM = "\u001b[2m";
+const EXTENSION_COLORS = [
+  "\u001b[36m",
+  "\u001b[32m",
+  "\u001b[35m",
+  "\u001b[33m",
+  "\u001b[34m",
+  "\u001b[96m",
+  "\u001b[92m",
+  "\u001b[95m",
+  "\u001b[93m",
+];
 
 function printUsage() {
-  console.log("Usage: node last-commit-message.js [--limit <count>] [--links <plain|path|file|vscode|cursor|visualstudio>] [--ext <extensions>] [--path <path>] [repo-path]");
-  console.log("Example: node last-commit-message.js --limit 100 --links cursor --path environments/prod --ext xaml,cs,js /path/to/repo");
+  console.log("Usage: node last-commit-message.js [--limit <count>] [--page <number>] [--page-size <count>] [--links <plain|path|file|vscode|cursor|visualstudio>] [--ext <extensions>] [--path <path>] [repo-path]");
+  console.log("Example: node last-commit-message.js --page 2 --page-size 20 --links cursor --path environments/prod --ext xaml,cs,js /path/to/repo");
 }
 
 function parseArgs(args) {
@@ -16,6 +29,8 @@ function parseArgs(args) {
     extensions: [],
     limit: 100,
     linkMode: "path",
+    page: 1,
+    pageSize: 20,
     paths: [],
     repoPath: process.cwd(),
   };
@@ -64,6 +79,30 @@ function parseArgs(args) {
       continue;
     }
 
+    if (arg === "--page") {
+      const value = args[index + 1];
+
+      if (!value) {
+        throw new Error(`Missing value for ${arg}`);
+      }
+
+      options.page = parsePositiveInteger(value, "page");
+      index += 1;
+      continue;
+    }
+
+    if (arg === "--page-size" || arg === "--per-page") {
+      const value = args[index + 1];
+
+      if (!value) {
+        throw new Error(`Missing value for ${arg}`);
+      }
+
+      options.pageSize = parsePositiveInteger(value, "page size");
+      index += 1;
+      continue;
+    }
+
     if (arg === "--path" || arg === "--scope") {
       const value = args[index + 1];
 
@@ -98,6 +137,21 @@ function parseArgs(args) {
 
     if (arg.startsWith("--link=")) {
       options.linkMode = parseLinkMode(arg.slice("--link=".length));
+      continue;
+    }
+
+    if (arg.startsWith("--page=")) {
+      options.page = parsePositiveInteger(arg.slice("--page=".length), "page");
+      continue;
+    }
+
+    if (arg.startsWith("--page-size=")) {
+      options.pageSize = parsePositiveInteger(arg.slice("--page-size=".length), "page size");
+      continue;
+    }
+
+    if (arg.startsWith("--per-page=")) {
+      options.pageSize = parsePositiveInteger(arg.slice("--per-page=".length), "page size");
       continue;
     }
 
@@ -143,13 +197,17 @@ function parseExtensions(value) {
 }
 
 function parseLimit(value) {
-  const limit = Number.parseInt(value, 10);
+  return parsePositiveInteger(value, "limit");
+}
 
-  if (!Number.isInteger(limit) || limit < 1) {
-    throw new Error(`Invalid limit: ${value}`);
+function parsePositiveInteger(value, label) {
+  const number = Number.parseInt(value, 10);
+
+  if (!Number.isInteger(number) || number < 1) {
+    throw new Error(`Invalid ${label}: ${value}`);
   }
 
-  return limit;
+  return number;
 }
 
 function parseLinkMode(value) {
@@ -281,6 +339,13 @@ function buildPathspecs(extensions, paths) {
   });
 }
 
+function formatRow(file, repoPath, linkMode, rowNumber, width) {
+  const color = colorForExtension(file);
+  const number = `${String(rowNumber).padStart(width, " ")}.`;
+
+  return `${DIM}${number}${RESET} ${color}${formatFile(file, repoPath, linkMode)}${RESET}`;
+}
+
 function formatFile(file, repoPath, linkMode) {
   const absolutePath = path.resolve(repoPath, file);
 
@@ -301,6 +366,17 @@ function formatFile(file, repoPath, linkMode) {
   }
 
   return file;
+}
+
+function colorForExtension(file) {
+  const extension = path.extname(file).toLowerCase().replace(/^\./, "") || "none";
+  let hash = 0;
+
+  for (const char of extension) {
+    hash = (hash * 31 + char.charCodeAt(0)) >>> 0;
+  }
+
+  return EXTENSION_COLORS[hash % EXTENSION_COLORS.length];
 }
 
 function editorUri(scheme, absolutePath) {
@@ -348,8 +424,22 @@ try {
     process.exit(1);
   }
 
-  for (const file of files) {
-    console.log(formatFile(file, options.repoPath, options.linkMode));
+  const pageStart = (options.page - 1) * options.pageSize;
+  const pageFiles = files.slice(pageStart, pageStart + options.pageSize);
+  const totalPages = Math.max(1, Math.ceil(files.length / options.pageSize));
+
+  if (pageFiles.length === 0) {
+    console.error(`Error: page ${options.page} is out of range. ${files.length} files found, ${totalPages} pages available.`);
+    process.exit(1);
+  }
+
+  const firstRowNumber = pageStart + 1;
+  const rowNumberWidth = String(Math.min(files.length, pageStart + pageFiles.length)).length;
+
+  console.log(`${DIM}Showing ${firstRowNumber}-${pageStart + pageFiles.length} of ${files.length} changed files. Page ${options.page}/${totalPages}.${RESET}`);
+
+  for (let index = 0; index < pageFiles.length; index += 1) {
+    console.log(formatRow(pageFiles[index], options.repoPath, options.linkMode, firstRowNumber + index, rowNumberWidth));
   }
 } catch (error) {
   const details = error.stderr ? error.stderr.toString().trim() : error.message;

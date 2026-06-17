@@ -1,6 +1,6 @@
 # Last Changed Files
 
-A tiny Node.js script that prints the most recent distinct files changed in Git history. By default it returns the last 100 files and prints absolute paths that many terminals can open as clickable file links.
+A tiny Node.js script that prints the most recent distinct files changed in Git history. By default it scans the last 100 changed files and shows them 20 at a time as numbered, color-coded, clickable file links.
 
 ## Usage
 
@@ -8,6 +8,8 @@ A tiny Node.js script that prints the most recent distinct files changed in Git 
 node last-commit-message.js
 node last-commit-message.js /path/to/repo
 node last-commit-message.js --limit 50 /path/to/repo
+node last-commit-message.js --page 2 /path/to/repo
+node last-commit-message.js --page-size 10 /path/to/repo
 node last-commit-message.js --ext xaml,cs,js,ts /path/to/repo
 node last-commit-message.js --path environments/prod --ext ts /path/to/repo
 node last-commit-message.js --links vscode --path environments/prod --ext ts /path/to/repo
@@ -36,6 +38,25 @@ git -C <repo-path> diff-tree --root --no-commit-id --name-only -r -m --diff-filt
 ```
 
 Deleted files are skipped because clickable editor links are only useful for files that still exist.
+
+## Pagination
+
+The script scans up to `--limit` files, then displays one page. Defaults:
+
+```bash
+--limit 100
+--page 1
+--page-size 20
+```
+
+Use `--page` to move through the results:
+
+```bash
+node last-commit-message.js --page 2 /path/to/repo
+node last-commit-message.js --page 3 --page-size 10 /path/to/repo
+```
+
+Rows are numbered by their position in the full result set, and lines are colored by file extension.
 
 ## Filters
 
