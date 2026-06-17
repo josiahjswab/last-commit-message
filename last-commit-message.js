@@ -4,6 +4,8 @@ const { execFileSync } = require("node:child_process");
 const path = require("node:path");
 const { pathToFileURL } = require("node:url");
 
+const COMMIT_BATCH_SIZE = 200;
+
 function printUsage() {
   console.log("Usage: node last-commit-message.js [--limit <count>] [--links <plain|path|file|vscode|cursor|visualstudio>] [--ext <extensions>] [--path <path>] [repo-path]");
   console.log("Example: node last-commit-message.js --limit 100 --links cursor --path environments/prod --ext xaml,cs,js /path/to/repo");
@@ -170,32 +172,82 @@ function parseLinkMode(value) {
 
 function getLastChangedFiles(repoPath, extensions, paths, limit) {
   const pathspecs = buildPathspecs(extensions, paths);
-  const args = ["-C", repoPath, "log", "--name-only", "--pretty=format:", "--diff-filter=ACMRT"];
+  const files = [];
+  const seen = new Set();
+  let skip = 0;
+
+  while (files.length < limit) {
+    const hashes = getCommitHashes(repoPath, pathspecs, skip, COMMIT_BATCH_SIZE);
+
+    if (hashes.length === 0) {
+      break;
+    }
+
+    for (const hash of hashes) {
+      for (const file of getCommitFiles(repoPath, hash, pathspecs)) {
+        if (seen.has(file)) {
+          continue;
+        }
+
+        seen.add(file);
+        files.push(file);
+
+        if (files.length >= limit) {
+          return files;
+        }
+      }
+    }
+
+    skip += hashes.length;
+  }
+
+  return files;
+}
+
+function getCommitHashes(repoPath, pathspecs, skip, count) {
+  const args = [
+    "-C",
+    repoPath,
+    "log",
+    "--format=%H",
+    "--diff-filter=ACMRT",
+    `--max-count=${count}`,
+    `--skip=${skip}`,
+  ];
 
   if (pathspecs.length > 0) {
     args.push("--", ...pathspecs);
   }
 
-  const files = [];
-  const seen = new Set();
-  const output = runGit(args);
+  return splitLines(runGit(args));
+}
 
-  for (const line of output.split(/\r?\n/)) {
-    const file = line.trim();
+function getCommitFiles(repoPath, hash, pathspecs) {
+  const args = [
+    "-C",
+    repoPath,
+    "diff-tree",
+    "--root",
+    "--no-commit-id",
+    "--name-only",
+    "-r",
+    "-m",
+    "--diff-filter=ACMRT",
+    hash,
+  ];
 
-    if (!file || seen.has(file)) {
-      continue;
-    }
-
-    seen.add(file);
-    files.push(file);
-
-    if (files.length >= limit) {
-      break;
-    }
+  if (pathspecs.length > 0) {
+    args.push("--", ...pathspecs);
   }
 
-  return files;
+  return splitLines(runGit(args));
+}
+
+function splitLines(output) {
+  return output
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
 }
 
 function runGit(args) {

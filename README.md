@@ -28,10 +28,11 @@ node last-commit-message.js --help
 
 ## Behavior
 
-The script walks Git history newest-first and returns the first distinct file paths it sees:
+The script walks Git history newest-first in small commit batches and returns the first distinct file paths it sees:
 
 ```bash
-git -C <repo-path> log --name-only --pretty=format: --diff-filter=ACMRT
+git -C <repo-path> log --format=%H --diff-filter=ACMRT --max-count=200 --skip=<offset>
+git -C <repo-path> diff-tree --root --no-commit-id --name-only -r -m --diff-filter=ACMRT <commit>
 ```
 
 Deleted files are skipped because clickable editor links are only useful for files that still exist.
