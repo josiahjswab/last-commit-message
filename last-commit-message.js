@@ -2,17 +2,20 @@
 
 const { execFileSync } = require("node:child_process");
 const path = require("node:path");
+const { pathToFileURL } = require("node:url");
 
 function printUsage() {
-  console.log("Usage: node last-commit-message.js [--ext <extensions>] [--path <path>] [repo-path]");
-  console.log("Example: node last-commit-message.js --path environments/prod --ext xaml,cs,js /path/to/repo");
+  console.log("Usage: node last-commit-message.js [--files] [--links <plain|path|file|vscode>] [--ext <extensions>] [--path <path>] [repo-path]");
+  console.log("Example: node last-commit-message.js --files --links vscode --path environments/prod --ext xaml,cs,js /path/to/repo");
 }
 
 function parseArgs(args) {
   const options = {
     extensions: [],
+    linkMode: "plain",
     paths: [],
     repoPath: process.cwd(),
+    showFiles: false,
   };
 
   for (let index = 0; index < args.length; index += 1) {
@@ -20,6 +23,11 @@ function parseArgs(args) {
 
     if (arg === "-h" || arg === "--help") {
       options.help = true;
+      continue;
+    }
+
+    if (arg === "--files" || arg === "--show-files") {
+      options.showFiles = true;
       continue;
     }
 
@@ -31,6 +39,18 @@ function parseArgs(args) {
       }
 
       options.extensions.push(...parseExtensions(value));
+      index += 1;
+      continue;
+    }
+
+    if (arg === "--links" || arg === "--link") {
+      const value = args[index + 1];
+
+      if (!value) {
+        throw new Error(`Missing value for ${arg}`);
+      }
+
+      options.linkMode = parseLinkMode(value);
       index += 1;
       continue;
     }
@@ -57,6 +77,16 @@ function parseArgs(args) {
       continue;
     }
 
+    if (arg.startsWith("--links=")) {
+      options.linkMode = parseLinkMode(arg.slice("--links=".length));
+      continue;
+    }
+
+    if (arg.startsWith("--link=")) {
+      options.linkMode = parseLinkMode(arg.slice("--link=".length));
+      continue;
+    }
+
     if (arg.startsWith("--path=")) {
       options.paths.push(...parseList(arg.slice("--path=".length)));
       continue;
@@ -76,6 +106,10 @@ function parseArgs(args) {
     }
 
     options.repoPath = arg;
+  }
+
+  if (options.linkMode !== "plain") {
+    options.showFiles = true;
   }
 
   options.extensions = [...new Set(options.extensions)];
@@ -98,14 +132,52 @@ function parseExtensions(value) {
     .filter(Boolean);
 }
 
-function getLastCommitMessage(repoPath, extensions, paths) {
-  const args = ["-C", repoPath, "log", "-1", "--pretty=%B"];
+function parseLinkMode(value) {
+  const linkMode = value.trim().toLowerCase();
+  const allowed = new Set(["plain", "path", "file", "vscode"]);
+
+  if (!allowed.has(linkMode)) {
+    throw new Error(`Unknown link mode: ${value}`);
+  }
+
+  return linkMode;
+}
+
+function getLastCommit(repoPath, extensions, paths, showFiles) {
   const pathspecs = buildPathspecs(extensions, paths);
+  const hashArgs = ["-C", repoPath, "log", "-1", "--format=%H"];
+
+  if (pathspecs.length > 0) {
+    hashArgs.push("--", ...pathspecs);
+  }
+
+  const hash = runGit(hashArgs);
+
+  if (!hash) {
+    return null;
+  }
+
+  return {
+    files: showFiles ? getCommitFiles(repoPath, hash, pathspecs) : [],
+    hash,
+    message: runGit(["-C", repoPath, "log", "-1", "--pretty=%B", hash]),
+  };
+}
+
+function getCommitFiles(repoPath, hash, pathspecs) {
+  const args = ["-C", repoPath, "diff-tree", "--root", "--no-commit-id", "--name-only", "-r", hash];
 
   if (pathspecs.length > 0) {
     args.push("--", ...pathspecs);
   }
 
+  return runGit(args)
+    .split(/\r?\n/)
+    .map((file) => file.trim())
+    .filter(Boolean);
+}
+
+function runGit(args) {
   return execFileSync("git", args, {
     encoding: "utf8",
     stdio: ["ignore", "pipe", "pipe"],
@@ -136,6 +208,28 @@ function buildPathspecs(extensions, paths) {
   });
 }
 
+function formatFile(file, repoPath, linkMode) {
+  const absolutePath = path.resolve(repoPath, file);
+
+  if (linkMode === "path") {
+    return absolutePath;
+  }
+
+  if (linkMode === "file") {
+    return hyperlink(file, pathToFileURL(absolutePath).href);
+  }
+
+  if (linkMode === "vscode") {
+    return hyperlink(file, `vscode://file/${encodeURI(absolutePath.replace(/\\/g, "/"))}`);
+  }
+
+  return file;
+}
+
+function hyperlink(label, url) {
+  return `\u001b]8;;${url}\u0007${label}\u001b]8;;\u0007`;
+}
+
 let options;
 
 try {
@@ -152,9 +246,9 @@ if (options.help) {
 }
 
 try {
-  const message = getLastCommitMessage(options.repoPath, options.extensions, options.paths);
+  const commit = getLastCommit(options.repoPath, options.extensions, options.paths, options.showFiles);
 
-  if (!message) {
+  if (!commit) {
     const filters = [];
 
     if (options.paths.length > 0) {
@@ -170,7 +264,16 @@ try {
     process.exit(1);
   }
 
-  console.log(message);
+  console.log(commit.message);
+
+  if (options.showFiles) {
+    console.log("");
+    console.log("Files:");
+
+    for (const file of commit.files) {
+      console.log(formatFile(file, options.repoPath, options.linkMode));
+    }
+  }
 } catch (error) {
   const details = error.stderr ? error.stderr.toString().trim() : error.message;
   console.error(`Error: unable to read last commit message from ${options.repoPath}`);

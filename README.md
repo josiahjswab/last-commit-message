@@ -10,6 +10,7 @@ node last-commit-message.js /path/to/repo
 node last-commit-message.js --ext js
 node last-commit-message.js --ext xaml,cs,js,ts /path/to/repo
 node last-commit-message.js --path environments/prod --ext ts /path/to/repo
+node last-commit-message.js --files --links vscode --path environments/prod --ext ts /path/to/repo
 ```
 
 Use `--help` to print the usage line:
@@ -42,5 +43,16 @@ When `--path` or `--scope` is provided, it limits the search to commits that tou
 ```bash
 git -C <repo-path> log -1 --pretty=%B -- 'environments/prod/**/*.ts'
 ```
+
+When `--files` is provided, the script also prints the files touched by the matched commit. Use `--links` to control how those files are printed:
+
+```bash
+node last-commit-message.js --files --links plain /path/to/repo
+node last-commit-message.js --files --links path /path/to/repo
+node last-commit-message.js --files --links file /path/to/repo
+node last-commit-message.js --files --links vscode /path/to/repo
+```
+
+`vscode` uses terminal hyperlinks that target `vscode://file/...`, so supported terminals can open the file in VS Code.
 
 If the path is not a Git repo, or the repo has no commits, it exits with an error message.
