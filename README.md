@@ -28,6 +28,37 @@ node last-commit-message.js --help
 - Node.js
 - Git available on your `PATH`
 
+## Install PowerShell Function
+
+From this repo, run:
+
+```powershell
+.\install-changed.ps1
+```
+
+This adds a `changed` function to your current user's PowerShell profile. Restart PowerShell or reload the profile:
+
+```powershell
+. $PROFILE
+```
+
+Then run this from inside any Git repo:
+
+```powershell
+changed
+changed --page 2
+changed --ext xaml,cs
+changed --path App/WinBidPro.UI.Main --ext xaml,cs
+```
+
+The installer is safe to run again; it replaces its own profile block instead of adding duplicates.
+
+By default it uses `--links path`, which works well inside Cursor or VS Code terminals without external-protocol prompts. To default to Cursor protocol links instead:
+
+```powershell
+.\install-changed.ps1 -Links cursor
+```
+
 ## Behavior
 
 The script walks Git history newest-first in small commit batches and returns the first distinct file paths it sees:
