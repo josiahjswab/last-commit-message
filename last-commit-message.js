@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 const { execFileSync } = require("node:child_process");
+const fs = require("node:fs");
 const path = require("node:path");
 const { pathToFileURL } = require("node:url");
 
@@ -30,6 +31,7 @@ function parseArgs(args) {
     limit: 100,
     linkMode: "path",
     page: 1,
+    pageSpecified: false,
     pageSize: 20,
     paths: [],
     repoPath: process.cwd(),
@@ -87,6 +89,7 @@ function parseArgs(args) {
       }
 
       options.page = parsePositiveInteger(value, "page");
+      options.pageSpecified = true;
       index += 1;
       continue;
     }
@@ -142,6 +145,7 @@ function parseArgs(args) {
 
     if (arg.startsWith("--page=")) {
       options.page = parsePositiveInteger(arg.slice("--page=".length), "page");
+      options.pageSpecified = true;
       continue;
     }
 
@@ -401,6 +405,70 @@ function describeFilters(options) {
   return filters.length > 0 ? ` for ${filters.join("; ")}` : "";
 }
 
+function displayPage(files, options, page) {
+  const pageStart = (page - 1) * options.pageSize;
+  const pageFiles = files.slice(pageStart, pageStart + options.pageSize);
+  const totalPages = Math.max(1, Math.ceil(files.length / options.pageSize));
+
+  if (pageFiles.length === 0) {
+    console.error(`Error: page ${page} is out of range. ${files.length} files found, ${totalPages} pages available.`);
+    process.exit(1);
+  }
+
+  const firstRowNumber = pageStart + 1;
+  const rowNumberWidth = String(Math.min(files.length, pageStart + pageFiles.length)).length;
+
+  console.log(`${DIM}Showing ${firstRowNumber}-${pageStart + pageFiles.length} of ${files.length} changed files. Page ${page}/${totalPages}.${RESET}`);
+
+  for (let index = 0; index < pageFiles.length; index += 1) {
+    console.log(formatRow(pageFiles[index], options.repoPath, options.linkMode, firstRowNumber + index, rowNumberWidth));
+  }
+
+  return page < totalPages;
+}
+
+function waitForNextPage() {
+  process.stdout.write(`${DIM}Press Enter for next page, or q then Enter to quit...${RESET}`);
+
+  const buffer = Buffer.alloc(1);
+  let input = "";
+
+  while (true) {
+    const bytesRead = fs.readSync(0, buffer, 0, 1);
+
+    if (bytesRead === 0) {
+      process.stdout.write("\n");
+      return false;
+    }
+
+    const char = buffer.toString("utf8", 0, bytesRead);
+
+    if (char === "\n" || char === "\r") {
+      process.stdout.write("\n");
+      return input.trim().toLowerCase() !== "q";
+    }
+
+    input += char;
+  }
+}
+
+function displayFiles(files, options) {
+  if (options.pageSpecified || !process.stdin.isTTY) {
+    displayPage(files, options, options.page);
+    return;
+  }
+
+  const totalPages = Math.max(1, Math.ceil(files.length / options.pageSize));
+
+  for (let page = 1; page <= totalPages; page += 1) {
+    const hasNextPage = displayPage(files, options, page);
+
+    if (!hasNextPage || !waitForNextPage()) {
+      return;
+    }
+  }
+}
+
 let options;
 
 try {
@@ -424,23 +492,7 @@ try {
     process.exit(1);
   }
 
-  const pageStart = (options.page - 1) * options.pageSize;
-  const pageFiles = files.slice(pageStart, pageStart + options.pageSize);
-  const totalPages = Math.max(1, Math.ceil(files.length / options.pageSize));
-
-  if (pageFiles.length === 0) {
-    console.error(`Error: page ${options.page} is out of range. ${files.length} files found, ${totalPages} pages available.`);
-    process.exit(1);
-  }
-
-  const firstRowNumber = pageStart + 1;
-  const rowNumberWidth = String(Math.min(files.length, pageStart + pageFiles.length)).length;
-
-  console.log(`${DIM}Showing ${firstRowNumber}-${pageStart + pageFiles.length} of ${files.length} changed files. Page ${options.page}/${totalPages}.${RESET}`);
-
-  for (let index = 0; index < pageFiles.length; index += 1) {
-    console.log(formatRow(pageFiles[index], options.repoPath, options.linkMode, firstRowNumber + index, rowNumberWidth));
-  }
+  displayFiles(files, options);
 } catch (error) {
   const details = error.stderr ? error.stderr.toString().trim() : error.message;
   console.error(`Error: unable to read changed files from ${options.repoPath}`);

@@ -49,12 +49,16 @@ The script scans up to `--limit` files, then displays one page. Defaults:
 --page-size 20
 ```
 
-Use `--page` to move through the results:
+In an interactive terminal, the script shows one page and waits for Enter before showing the next page. Type `q` then Enter to stop early.
+
+Use `--page` to show a specific page without prompting:
 
 ```bash
 node last-commit-message.js --page 2 /path/to/repo
 node last-commit-message.js --page 3 --page-size 10 /path/to/repo
 ```
+
+When output is piped or redirected, the script prints only the selected page and does not prompt.
 
 Rows are numbered by their position in the full result set, and lines are colored by file extension.
 
