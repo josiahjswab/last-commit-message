@@ -4,13 +4,14 @@ const { execFileSync } = require("node:child_process");
 const path = require("node:path");
 
 function printUsage() {
-  console.log("Usage: node last-commit-message.js [--ext <extensions>] [repo-path]");
-  console.log("Example: node last-commit-message.js --ext xaml,cs,js /path/to/repo");
+  console.log("Usage: node last-commit-message.js [--ext <extensions>] [--path <path>] [repo-path]");
+  console.log("Example: node last-commit-message.js --path environments/prod --ext xaml,cs,js /path/to/repo");
 }
 
 function parseArgs(args) {
   const options = {
     extensions: [],
+    paths: [],
     repoPath: process.cwd(),
   };
 
@@ -34,6 +35,18 @@ function parseArgs(args) {
       continue;
     }
 
+    if (arg === "--path" || arg === "--scope") {
+      const value = args[index + 1];
+
+      if (!value) {
+        throw new Error(`Missing value for ${arg}`);
+      }
+
+      options.paths.push(...parseList(value));
+      index += 1;
+      continue;
+    }
+
     if (arg.startsWith("--ext=")) {
       options.extensions.push(...parseExtensions(arg.slice("--ext=".length)));
       continue;
@@ -41,6 +54,16 @@ function parseArgs(args) {
 
     if (arg.startsWith("--extension=")) {
       options.extensions.push(...parseExtensions(arg.slice("--extension=".length)));
+      continue;
+    }
+
+    if (arg.startsWith("--path=")) {
+      options.paths.push(...parseList(arg.slice("--path=".length)));
+      continue;
+    }
+
+    if (arg.startsWith("--scope=")) {
+      options.paths.push(...parseList(arg.slice("--scope=".length)));
       continue;
     }
 
@@ -56,29 +79,61 @@ function parseArgs(args) {
   }
 
   options.extensions = [...new Set(options.extensions)];
+  options.paths = [...new Set(options.paths)];
   options.repoPath = path.resolve(options.repoPath);
 
   return options;
 }
 
-function parseExtensions(value) {
+function parseList(value) {
   return value
     .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+function parseExtensions(value) {
+  return parseList(value)
     .map((extension) => extension.trim().replace(/^\./, ""))
     .filter(Boolean);
 }
 
-function getLastCommitMessage(repoPath, extensions) {
+function getLastCommitMessage(repoPath, extensions, paths) {
   const args = ["-C", repoPath, "log", "-1", "--pretty=%B"];
+  const pathspecs = buildPathspecs(extensions, paths);
 
-  if (extensions.length > 0) {
-    args.push("--", ...extensions.map((extension) => `*.${extension}`));
+  if (pathspecs.length > 0) {
+    args.push("--", ...pathspecs);
   }
 
   return execFileSync("git", args, {
     encoding: "utf8",
     stdio: ["ignore", "pipe", "pipe"],
   }).trim();
+}
+
+function buildPathspecs(extensions, paths) {
+  if (extensions.length === 0 && paths.length === 0) {
+    return [];
+  }
+
+  if (extensions.length === 0) {
+    return paths;
+  }
+
+  if (paths.length === 0) {
+    return extensions.map((extension) => `*.${extension}`);
+  }
+
+  return paths.flatMap((targetPath) => {
+    const normalizedPath = targetPath.replace(/[\\/]+$/, "");
+
+    if (normalizedPath === "." || normalizedPath === "") {
+      return extensions.map((extension) => `*.${extension}`);
+    }
+
+    return extensions.map((extension) => `${normalizedPath}/**/*.${extension}`);
+  });
 }
 
 let options;
@@ -97,10 +152,20 @@ if (options.help) {
 }
 
 try {
-  const message = getLastCommitMessage(options.repoPath, options.extensions);
+  const message = getLastCommitMessage(options.repoPath, options.extensions, options.paths);
 
   if (!message) {
-    const filter = options.extensions.length > 0 ? ` for extensions: ${options.extensions.join(", ")}` : "";
+    const filters = [];
+
+    if (options.paths.length > 0) {
+      filters.push(`paths: ${options.paths.join(", ")}`);
+    }
+
+    if (options.extensions.length > 0) {
+      filters.push(`extensions: ${options.extensions.join(", ")}`);
+    }
+
+    const filter = filters.length > 0 ? ` for ${filters.join("; ")}` : "";
     console.error(`Error: no commits found in ${options.repoPath}${filter}`);
     process.exit(1);
   }

@@ -9,6 +9,7 @@ node last-commit-message.js
 node last-commit-message.js /path/to/repo
 node last-commit-message.js --ext js
 node last-commit-message.js --ext xaml,cs,js,ts /path/to/repo
+node last-commit-message.js --path environments/prod --ext ts /path/to/repo
 ```
 
 Use `--help` to print the usage line:
@@ -34,6 +35,12 @@ When `--ext` or `--extension` is provided, it limits the search to commits that 
 
 ```bash
 git -C <repo-path> log -1 --pretty=%B -- '*.js'
+```
+
+When `--path` or `--scope` is provided, it limits the search to commits that touched that path inside the repo. You can combine it with `--ext`:
+
+```bash
+git -C <repo-path> log -1 --pretty=%B -- 'environments/prod/**/*.ts'
 ```
 
 If the path is not a Git repo, or the repo has no commits, it exits with an error message.
