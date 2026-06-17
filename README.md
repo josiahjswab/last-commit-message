@@ -2,6 +2,25 @@
 
 A tiny Node.js script that prints the most recent distinct files changed in Git history. By default it scans the last 100 changed files and shows them 20 at a time as numbered, color-coded, clickable file links.
 
+## Quick Start
+
+Install the PowerShell helper from this repo:
+
+```powershell
+.\install-changed.ps1
+. $PROFILE
+```
+
+Then run `changed` from inside any Git repo:
+
+```powershell
+changed
+changed --ext xaml,cs
+changed --path App/WinBidPro.UI.Main --ext xaml,cs
+```
+
+The helper points at the checkout where you ran the installer, so it works from other repos after installation.
+
 ## Usage
 
 ```bash
@@ -30,7 +49,7 @@ node last-commit-message.js --help
 
 ## Install PowerShell Function
 
-From this repo, run:
+Use the installer to add a `changed` function to your current user's PowerShell profile:
 
 ```powershell
 .\install-changed.ps1
@@ -53,10 +72,12 @@ changed --path App/WinBidPro.UI.Main --ext xaml,cs
 
 The installer is safe to run again; it replaces its own profile block instead of adding duplicates.
 
-By default it uses `--links path`, which works well inside Cursor or VS Code terminals without external-protocol prompts. To default to Cursor protocol links instead:
+By default it uses `--links path`, which works well inside Cursor or VS Code terminals without external-protocol prompts. To default to another link mode, pass `-Links`:
 
 ```powershell
 .\install-changed.ps1 -Links cursor
+.\install-changed.ps1 -Links vscode
+.\install-changed.ps1 -Links visualstudio
 ```
 
 ## Behavior
