@@ -8,7 +8,7 @@ A tiny Node.js script that prints the most recent Git commit message for the cur
 node last-commit-message.js
 node last-commit-message.js /path/to/repo
 node last-commit-message.js --ext js
-node last-commit-message.js --ext xaml,cs,js /path/to/repo
+node last-commit-message.js --ext xaml,cs,js,ts /path/to/repo
 ```
 
 Use `--help` to print the usage line:
