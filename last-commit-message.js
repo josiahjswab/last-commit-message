@@ -5,8 +5,8 @@ const path = require("node:path");
 const { pathToFileURL } = require("node:url");
 
 function printUsage() {
-  console.log("Usage: node last-commit-message.js [--files] [--links <plain|path|file|vscode>] [--ext <extensions>] [--path <path>] [repo-path]");
-  console.log("Example: node last-commit-message.js --files --links vscode --path environments/prod --ext xaml,cs,js /path/to/repo");
+  console.log("Usage: node last-commit-message.js [--files] [--links <plain|path|file|vscode|cursor|visualstudio>] [--ext <extensions>] [--path <path>] [repo-path]");
+  console.log("Example: node last-commit-message.js --files --links cursor --path environments/prod --ext xaml,cs,js /path/to/repo");
 }
 
 function parseArgs(args) {
@@ -134,13 +134,19 @@ function parseExtensions(value) {
 
 function parseLinkMode(value) {
   const linkMode = value.trim().toLowerCase();
-  const allowed = new Set(["plain", "path", "file", "vscode"]);
+  const aliases = {
+    vs: "visualstudio",
+    visual: "visualstudio",
+    "visual-studio": "visualstudio",
+  };
+  const normalizedLinkMode = aliases[linkMode] || linkMode;
+  const allowed = new Set(["plain", "path", "file", "vscode", "cursor", "visualstudio"]);
 
-  if (!allowed.has(linkMode)) {
+  if (!allowed.has(normalizedLinkMode)) {
     throw new Error(`Unknown link mode: ${value}`);
   }
 
-  return linkMode;
+  return normalizedLinkMode;
 }
 
 function getLastCommit(repoPath, extensions, paths, showFiles) {
@@ -220,10 +226,22 @@ function formatFile(file, repoPath, linkMode) {
   }
 
   if (linkMode === "vscode") {
-    return hyperlink(file, `vscode://file/${encodeURI(absolutePath.replace(/\\/g, "/"))}`);
+    return hyperlink(file, editorUri("vscode", absolutePath));
+  }
+
+  if (linkMode === "cursor") {
+    return hyperlink(file, editorUri("cursor", absolutePath));
+  }
+
+  if (linkMode === "visualstudio") {
+    return absolutePath;
   }
 
   return file;
+}
+
+function editorUri(scheme, absolutePath) {
+  return `${scheme}://file/${encodeURI(absolutePath.replace(/\\/g, "/"))}`;
 }
 
 function hyperlink(label, url) {

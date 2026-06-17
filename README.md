@@ -11,6 +11,8 @@ node last-commit-message.js --ext js
 node last-commit-message.js --ext xaml,cs,js,ts /path/to/repo
 node last-commit-message.js --path environments/prod --ext ts /path/to/repo
 node last-commit-message.js --files --links vscode --path environments/prod --ext ts /path/to/repo
+node last-commit-message.js --files --links cursor --path environments/prod --ext ts /path/to/repo
+node last-commit-message.js --files --links visualstudio --path environments/prod --ext ts /path/to/repo
 ```
 
 Use `--help` to print the usage line:
@@ -51,8 +53,11 @@ node last-commit-message.js --files --links plain /path/to/repo
 node last-commit-message.js --files --links path /path/to/repo
 node last-commit-message.js --files --links file /path/to/repo
 node last-commit-message.js --files --links vscode /path/to/repo
+node last-commit-message.js --files --links cursor /path/to/repo
+node last-commit-message.js --files --links visualstudio /path/to/repo
 ```
 
-`vscode` uses terminal hyperlinks that target `vscode://file/...`, so supported terminals can open the file in VS Code.
+`vscode` and `cursor` use terminal hyperlinks that target `vscode://file/...` or `cursor://file/...`.
+`visualstudio` prints absolute paths, which Visual Studio and many terminals can detect as clickable file links.
 
 If the path is not a Git repo, or the repo has no commits, it exits with an error message.
