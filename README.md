@@ -1,18 +1,18 @@
-# Last Commit Message
+# Last Touched Files
 
-A tiny Node.js script that prints the most recent Git commit message for the current directory, or for a repo path you provide.
+A tiny Node.js script that prints the most recent distinct files touched in Git history. By default it returns the last 100 files and prints absolute paths that many terminals can open as clickable file links.
 
 ## Usage
 
 ```bash
 node last-commit-message.js
 node last-commit-message.js /path/to/repo
-node last-commit-message.js --ext js
+node last-commit-message.js --limit 50 /path/to/repo
 node last-commit-message.js --ext xaml,cs,js,ts /path/to/repo
 node last-commit-message.js --path environments/prod --ext ts /path/to/repo
-node last-commit-message.js --files --links vscode --path environments/prod --ext ts /path/to/repo
-node last-commit-message.js --files --links cursor --path environments/prod --ext ts /path/to/repo
-node last-commit-message.js --files --links visualstudio --path environments/prod --ext ts /path/to/repo
+node last-commit-message.js --links vscode --path environments/prod --ext ts /path/to/repo
+node last-commit-message.js --links cursor --path environments/prod --ext ts /path/to/repo
+node last-commit-message.js --links visualstudio --path environments/prod --ext ts /path/to/repo
 ```
 
 Use `--help` to print the usage line:
@@ -28,36 +28,48 @@ node last-commit-message.js --help
 
 ## Behavior
 
-The script runs:
+The script walks Git history newest-first and returns the first distinct file paths it sees:
 
 ```bash
-git -C <repo-path> log -1 --pretty=%B
+git -C <repo-path> log --name-only --pretty=format: --diff-filter=ACMRT
 ```
 
-When `--ext` or `--extension` is provided, it limits the search to commits that touched matching file endings:
+Deleted files are skipped because clickable editor links are only useful for files that still exist.
+
+## Filters
+
+Use `--ext` or `--extension` to limit file endings:
 
 ```bash
-git -C <repo-path> log -1 --pretty=%B -- '*.js'
+node last-commit-message.js --ext xaml,cs,js,ts /path/to/repo
 ```
 
-When `--path` or `--scope` is provided, it limits the search to commits that touched that path inside the repo. You can combine it with `--ext`:
+Use `--path` or `--scope` to limit the search to a folder inside the repo:
 
 ```bash
-git -C <repo-path> log -1 --pretty=%B -- 'environments/prod/**/*.ts'
+node last-commit-message.js --path environments/prod /path/to/repo
 ```
 
-When `--files` is provided, the script also prints the files touched by the matched commit. Use `--links` to control how those files are printed:
+Combine both:
 
 ```bash
-node last-commit-message.js --files --links plain /path/to/repo
-node last-commit-message.js --files --links path /path/to/repo
-node last-commit-message.js --files --links file /path/to/repo
-node last-commit-message.js --files --links vscode /path/to/repo
-node last-commit-message.js --files --links cursor /path/to/repo
-node last-commit-message.js --files --links visualstudio /path/to/repo
+node last-commit-message.js --path environments/prod --ext ts,cs /path/to/repo
+```
+
+## Link Modes
+
+Use `--links` to control how files print:
+
+```bash
+node last-commit-message.js --links plain /path/to/repo
+node last-commit-message.js --links path /path/to/repo
+node last-commit-message.js --links file /path/to/repo
+node last-commit-message.js --links vscode /path/to/repo
+node last-commit-message.js --links cursor /path/to/repo
+node last-commit-message.js --links visualstudio /path/to/repo
 ```
 
 `vscode` and `cursor` use terminal hyperlinks that target `vscode://file/...` or `cursor://file/...`.
 `visualstudio` prints absolute paths, which Visual Studio and many terminals can detect as clickable file links.
 
-If the path is not a Git repo, or the repo has no commits, it exits with an error message.
+If the path is not a Git repo, or no matching files are found, it exits with an error message.

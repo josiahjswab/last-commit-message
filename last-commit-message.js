@@ -5,17 +5,17 @@ const path = require("node:path");
 const { pathToFileURL } = require("node:url");
 
 function printUsage() {
-  console.log("Usage: node last-commit-message.js [--files] [--links <plain|path|file|vscode|cursor|visualstudio>] [--ext <extensions>] [--path <path>] [repo-path]");
-  console.log("Example: node last-commit-message.js --files --links cursor --path environments/prod --ext xaml,cs,js /path/to/repo");
+  console.log("Usage: node last-commit-message.js [--limit <count>] [--links <plain|path|file|vscode|cursor|visualstudio>] [--ext <extensions>] [--path <path>] [repo-path]");
+  console.log("Example: node last-commit-message.js --limit 100 --links cursor --path environments/prod --ext xaml,cs,js /path/to/repo");
 }
 
 function parseArgs(args) {
   const options = {
     extensions: [],
-    linkMode: "plain",
+    limit: 100,
+    linkMode: "path",
     paths: [],
     repoPath: process.cwd(),
-    showFiles: false,
   };
 
   for (let index = 0; index < args.length; index += 1) {
@@ -23,11 +23,6 @@ function parseArgs(args) {
 
     if (arg === "-h" || arg === "--help") {
       options.help = true;
-      continue;
-    }
-
-    if (arg === "--files" || arg === "--show-files") {
-      options.showFiles = true;
       continue;
     }
 
@@ -39,6 +34,18 @@ function parseArgs(args) {
       }
 
       options.extensions.push(...parseExtensions(value));
+      index += 1;
+      continue;
+    }
+
+    if (arg === "--limit") {
+      const value = args[index + 1];
+
+      if (!value) {
+        throw new Error(`Missing value for ${arg}`);
+      }
+
+      options.limit = parseLimit(value);
       index += 1;
       continue;
     }
@@ -77,6 +84,11 @@ function parseArgs(args) {
       continue;
     }
 
+    if (arg.startsWith("--limit=")) {
+      options.limit = parseLimit(arg.slice("--limit=".length));
+      continue;
+    }
+
     if (arg.startsWith("--links=")) {
       options.linkMode = parseLinkMode(arg.slice("--links=".length));
       continue;
@@ -108,10 +120,6 @@ function parseArgs(args) {
     options.repoPath = arg;
   }
 
-  if (options.linkMode !== "plain") {
-    options.showFiles = true;
-  }
-
   options.extensions = [...new Set(options.extensions)];
   options.paths = [...new Set(options.paths)];
   options.repoPath = path.resolve(options.repoPath);
@@ -132,9 +140,20 @@ function parseExtensions(value) {
     .filter(Boolean);
 }
 
+function parseLimit(value) {
+  const limit = Number.parseInt(value, 10);
+
+  if (!Number.isInteger(limit) || limit < 1) {
+    throw new Error(`Invalid limit: ${value}`);
+  }
+
+  return limit;
+}
+
 function parseLinkMode(value) {
   const linkMode = value.trim().toLowerCase();
   const aliases = {
+    code: "vscode",
     vs: "visualstudio",
     visual: "visualstudio",
     "visual-studio": "visualstudio",
@@ -149,38 +168,34 @@ function parseLinkMode(value) {
   return normalizedLinkMode;
 }
 
-function getLastCommit(repoPath, extensions, paths, showFiles) {
+function getLastTouchedFiles(repoPath, extensions, paths, limit) {
   const pathspecs = buildPathspecs(extensions, paths);
-  const hashArgs = ["-C", repoPath, "log", "-1", "--format=%H"];
-
-  if (pathspecs.length > 0) {
-    hashArgs.push("--", ...pathspecs);
-  }
-
-  const hash = runGit(hashArgs);
-
-  if (!hash) {
-    return null;
-  }
-
-  return {
-    files: showFiles ? getCommitFiles(repoPath, hash, pathspecs) : [],
-    hash,
-    message: runGit(["-C", repoPath, "log", "-1", "--pretty=%B", hash]),
-  };
-}
-
-function getCommitFiles(repoPath, hash, pathspecs) {
-  const args = ["-C", repoPath, "diff-tree", "--root", "--no-commit-id", "--name-only", "-r", hash];
+  const args = ["-C", repoPath, "log", "--name-only", "--pretty=format:", "--diff-filter=ACMRT"];
 
   if (pathspecs.length > 0) {
     args.push("--", ...pathspecs);
   }
 
-  return runGit(args)
-    .split(/\r?\n/)
-    .map((file) => file.trim())
-    .filter(Boolean);
+  const files = [];
+  const seen = new Set();
+  const output = runGit(args);
+
+  for (const line of output.split(/\r?\n/)) {
+    const file = line.trim();
+
+    if (!file || seen.has(file)) {
+      continue;
+    }
+
+    seen.add(file);
+    files.push(file);
+
+    if (files.length >= limit) {
+      break;
+    }
+  }
+
+  return files;
 }
 
 function runGit(args) {
@@ -217,7 +232,7 @@ function buildPathspecs(extensions, paths) {
 function formatFile(file, repoPath, linkMode) {
   const absolutePath = path.resolve(repoPath, file);
 
-  if (linkMode === "path") {
+  if (linkMode === "path" || linkMode === "visualstudio") {
     return absolutePath;
   }
 
@@ -233,10 +248,6 @@ function formatFile(file, repoPath, linkMode) {
     return hyperlink(file, editorUri("cursor", absolutePath));
   }
 
-  if (linkMode === "visualstudio") {
-    return absolutePath;
-  }
-
   return file;
 }
 
@@ -246,6 +257,20 @@ function editorUri(scheme, absolutePath) {
 
 function hyperlink(label, url) {
   return `\u001b]8;;${url}\u0007${label}\u001b]8;;\u0007`;
+}
+
+function describeFilters(options) {
+  const filters = [];
+
+  if (options.paths.length > 0) {
+    filters.push(`paths: ${options.paths.join(", ")}`);
+  }
+
+  if (options.extensions.length > 0) {
+    filters.push(`extensions: ${options.extensions.join(", ")}`);
+  }
+
+  return filters.length > 0 ? ` for ${filters.join("; ")}` : "";
 }
 
 let options;
@@ -264,37 +289,19 @@ if (options.help) {
 }
 
 try {
-  const commit = getLastCommit(options.repoPath, options.extensions, options.paths, options.showFiles);
+  const files = getLastTouchedFiles(options.repoPath, options.extensions, options.paths, options.limit);
 
-  if (!commit) {
-    const filters = [];
-
-    if (options.paths.length > 0) {
-      filters.push(`paths: ${options.paths.join(", ")}`);
-    }
-
-    if (options.extensions.length > 0) {
-      filters.push(`extensions: ${options.extensions.join(", ")}`);
-    }
-
-    const filter = filters.length > 0 ? ` for ${filters.join("; ")}` : "";
-    console.error(`Error: no commits found in ${options.repoPath}${filter}`);
+  if (files.length === 0) {
+    console.error(`Error: no files found in ${options.repoPath}${describeFilters(options)}`);
     process.exit(1);
   }
 
-  console.log(commit.message);
-
-  if (options.showFiles) {
-    console.log("");
-    console.log("Files:");
-
-    for (const file of commit.files) {
-      console.log(formatFile(file, options.repoPath, options.linkMode));
-    }
+  for (const file of files) {
+    console.log(formatFile(file, options.repoPath, options.linkMode));
   }
 } catch (error) {
   const details = error.stderr ? error.stderr.toString().trim() : error.message;
-  console.error(`Error: unable to read last commit message from ${options.repoPath}`);
+  console.error(`Error: unable to read touched files from ${options.repoPath}`);
 
   if (details) {
     console.error(details);
