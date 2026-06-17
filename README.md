@@ -1,6 +1,6 @@
-# Last Touched Files
+# Last Changed Files
 
-A tiny Node.js script that prints the most recent distinct files touched in Git history. By default it returns the last 100 files and prints absolute paths that many terminals can open as clickable file links.
+A tiny Node.js script that prints the most recent distinct files changed in Git history. By default it returns the last 100 files and prints absolute paths that many terminals can open as clickable file links.
 
 ## Usage
 

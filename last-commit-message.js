@@ -168,7 +168,7 @@ function parseLinkMode(value) {
   return normalizedLinkMode;
 }
 
-function getLastTouchedFiles(repoPath, extensions, paths, limit) {
+function getLastChangedFiles(repoPath, extensions, paths, limit) {
   const pathspecs = buildPathspecs(extensions, paths);
   const args = ["-C", repoPath, "log", "--name-only", "--pretty=format:", "--diff-filter=ACMRT"];
 
@@ -289,7 +289,7 @@ if (options.help) {
 }
 
 try {
-  const files = getLastTouchedFiles(options.repoPath, options.extensions, options.paths, options.limit);
+  const files = getLastChangedFiles(options.repoPath, options.extensions, options.paths, options.limit);
 
   if (files.length === 0) {
     console.error(`Error: no files found in ${options.repoPath}${describeFilters(options)}`);
@@ -301,7 +301,7 @@ try {
   }
 } catch (error) {
   const details = error.stderr ? error.stderr.toString().trim() : error.message;
-  console.error(`Error: unable to read touched files from ${options.repoPath}`);
+  console.error(`Error: unable to read changed files from ${options.repoPath}`);
 
   if (details) {
     console.error(details);
