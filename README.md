@@ -60,7 +60,7 @@ node last-commit-message.js --page 3 --page-size 10 /path/to/repo
 
 When output is piped or redirected, the script prints only the selected page and does not prompt.
 
-Rows are numbered by their position in the full result set, and lines are colored by file extension.
+Rows are numbered by their position in the full result set, and lines are colored by file extension using a stable convention. For example, XAML is bright green, C# is cyan, TypeScript is blue, JavaScript is yellow, and markup files are magenta.
 
 ## Filters
 

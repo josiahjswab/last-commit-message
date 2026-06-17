@@ -8,17 +8,41 @@ const { pathToFileURL } = require("node:url");
 const COMMIT_BATCH_SIZE = 200;
 const RESET = "\u001b[0m";
 const DIM = "\u001b[2m";
-const EXTENSION_COLORS = [
-  "\u001b[36m",
-  "\u001b[32m",
-  "\u001b[35m",
-  "\u001b[33m",
-  "\u001b[34m",
-  "\u001b[96m",
-  "\u001b[92m",
-  "\u001b[95m",
-  "\u001b[93m",
-];
+const CYAN = "\u001b[36m";
+const GREEN = "\u001b[32m";
+const MAGENTA = "\u001b[35m";
+const YELLOW = "\u001b[33m";
+const BLUE = "\u001b[34m";
+const BRIGHT_CYAN = "\u001b[96m";
+const BRIGHT_GREEN = "\u001b[92m";
+const BRIGHT_MAGENTA = "\u001b[95m";
+const BRIGHT_YELLOW = "\u001b[93m";
+const WHITE = "\u001b[97m";
+const EXTENSION_COLOR_MAP = new Map([
+  ["xaml", BRIGHT_GREEN],
+  ["xml", GREEN],
+  ["cs", BRIGHT_CYAN],
+  ["fs", CYAN],
+  ["vb", CYAN],
+  ["ts", BLUE],
+  ["tsx", BLUE],
+  ["js", YELLOW],
+  ["jsx", YELLOW],
+  ["json", BRIGHT_YELLOW],
+  ["jsonc", BRIGHT_YELLOW],
+  ["css", MAGENTA],
+  ["scss", BRIGHT_MAGENTA],
+  ["sass", BRIGHT_MAGENTA],
+  ["html", BRIGHT_MAGENTA],
+  ["cshtml", BRIGHT_MAGENTA],
+  ["razor", BRIGHT_MAGENTA],
+  ["sql", GREEN],
+  ["ps1", CYAN],
+  ["psm1", CYAN],
+  ["md", WHITE],
+  ["yml", BRIGHT_YELLOW],
+  ["yaml", BRIGHT_YELLOW],
+]);
 
 function printUsage() {
   console.log("Usage: node last-commit-message.js [--limit <count>] [--page <number>] [--page-size <count>] [--links <plain|path|file|vscode|cursor|visualstudio>] [--ext <extensions>] [--path <path>] [repo-path]");
@@ -247,11 +271,13 @@ function getLastChangedFiles(repoPath, extensions, paths, limit) {
 
     for (const hash of hashes) {
       for (const file of getCommitFiles(repoPath, hash, pathspecs)) {
-        if (seen.has(file)) {
+        const distinctKey = normalizeDistinctFileKey(file);
+
+        if (seen.has(distinctKey)) {
           continue;
         }
 
-        seen.add(file);
+        seen.add(distinctKey);
         files.push(file);
 
         if (files.length >= limit) {
@@ -310,6 +336,10 @@ function splitLines(output) {
     .split(/\r?\n/)
     .map((line) => line.trim())
     .filter(Boolean);
+}
+
+function normalizeDistinctFileKey(file) {
+  return file.replace(/\\/g, "/").toLowerCase();
 }
 
 function runGit(args) {
@@ -374,13 +404,7 @@ function formatFile(file, repoPath, linkMode) {
 
 function colorForExtension(file) {
   const extension = path.extname(file).toLowerCase().replace(/^\./, "") || "none";
-  let hash = 0;
-
-  for (const char of extension) {
-    hash = (hash * 31 + char.charCodeAt(0)) >>> 0;
-  }
-
-  return EXTENSION_COLORS[hash % EXTENSION_COLORS.length];
+  return EXTENSION_COLOR_MAP.get(extension) || DIM;
 }
 
 function editorUri(scheme, absolutePath) {
