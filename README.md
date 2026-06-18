@@ -1,6 +1,6 @@
 # Last Changed Files
 
-A tiny Node.js script that prints the most recent distinct files changed in Git history. By default it scans the last 100 changed files and shows them 20 at a time as numbered, color-coded, clickable file links.
+A tiny Node.js script that prints the most recent distinct files changed in Git history. By default it scans the last 100 changed files and shows them 20 at a time as color-coded, clickable file links.
 
 ## Quick Start
 
@@ -19,7 +19,7 @@ changed --ext xaml,cs
 changed --path App/WinBidPro.UI.Main --ext xaml,cs
 ```
 
-In an interactive terminal, press Enter for the next page, type a row number to open that file in Cursor, or type `q` to quit.
+In an interactive terminal, press Enter for the next page or type `q` to quit.
 
 The helper points at the checkout where you ran the installer, so it works from other repos after installation.
 
@@ -33,8 +33,6 @@ node last-commit-message.js --page 2 /path/to/repo
 node last-commit-message.js --page-size 10 /path/to/repo
 node last-commit-message.js --ext xaml,cs,js,ts /path/to/repo
 node last-commit-message.js --path environments/prod --ext ts /path/to/repo
-node last-commit-message.js --open cursor --links path /path/to/repo
-node last-commit-message.js --open vscode --links path /path/to/repo
 node last-commit-message.js --links vscode --path environments/prod --ext ts /path/to/repo
 node last-commit-message.js --links cursor --path environments/prod --ext ts /path/to/repo
 node last-commit-message.js --links visualstudio --path environments/prod --ext ts /path/to/repo
@@ -84,14 +82,6 @@ By default it uses `--links path`, which works well inside Cursor or VS Code ter
 .\install-changed.ps1 -Links visualstudio
 ```
 
-The installed function opens typed row numbers in Cursor by default. To use a different opener:
-
-```powershell
-.\install-changed.ps1 -Open vscode
-.\install-changed.ps1 -Open visualstudio
-.\install-changed.ps1 -Open none
-```
-
 ## Behavior
 
 The script walks Git history newest-first in small commit batches and returns the first distinct file paths it sees:
@@ -117,11 +107,8 @@ In an interactive terminal, the script shows one page and waits for input:
 
 ```text
 Enter      show the next page
-7          open row 7 in the configured editor
 q          quit
 ```
-
-The default editor opener is Cursor. Use `--open vscode`, `--open visualstudio`, or `--open none` to change that behavior.
 
 Use `--page` to show a specific page without prompting:
 
@@ -132,7 +119,7 @@ node last-commit-message.js --page 3 --page-size 10 /path/to/repo
 
 When output is piped or redirected, the script prints only the selected page and does not prompt.
 
-Rows are numbered by their position in the full result set, and lines are colored by file extension using a stable convention. For example, XAML is bright green, C# is cyan, TypeScript is blue, JavaScript is yellow, and markup files are magenta.
+Each directory section gets a deterministic color derived from its name and position, making shared and differing base paths easy to scan. The final filename follows the extension legend: for example, XAML is bright green, C# is cyan, TypeScript is blue, JavaScript is yellow, and markup files are magenta.
 
 Each row also gets an emoji derived from the commit that last changed that file. If several rows show the same emoji, those files were last changed by the same commit.
 
@@ -171,14 +158,5 @@ node last-commit-message.js --links visualstudio /path/to/repo
 
 `vscode` and `cursor` use terminal hyperlinks that target `vscode://file/...` or `cursor://file/...`.
 `visualstudio` prints absolute paths, which Visual Studio and many terminals can detect as clickable file links.
-
-Use `--open` to control what happens when you type a row number in interactive mode:
-
-```bash
-node last-commit-message.js --open cursor /path/to/repo
-node last-commit-message.js --open vscode /path/to/repo
-node last-commit-message.js --open visualstudio /path/to/repo
-node last-commit-message.js --open none /path/to/repo
-```
 
 If the path is not a Git repo, or no matching files are found, it exits with an error message.

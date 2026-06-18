@@ -2,8 +2,6 @@ param(
   [string]$FunctionName = "changed",
   [ValidateSet("plain", "path", "file", "vscode", "cursor", "visualstudio")]
   [string]$Links = "path",
-  [ValidateSet("none", "vscode", "cursor", "visualstudio")]
-  [string]$Open = "cursor",
   [string]$ProfilePath = $PROFILE
 )
 
@@ -44,7 +42,7 @@ $quotedScriptPath = ConvertTo-SingleQuotedPowerShellString $resolvedScriptPath
 $block = @"
 $beginMarker
 function $FunctionName {
-  node $quotedScriptPath --links $Links --open $Open @args
+  node $quotedScriptPath --links $Links @args
 }
 $endMarker
 "@
@@ -67,5 +65,4 @@ Set-Content -LiteralPath $ProfilePath -Value $profileContent -Encoding UTF8
 
 Write-Host "Installed '$FunctionName' in $ProfilePath"
 Write-Host "Default link mode: $Links"
-Write-Host "Default opener: $Open"
 Write-Host "Reload with: . `$PROFILE"

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-const { execFileSync, spawnSync } = require("node:child_process");
+const { execFileSync } = require("node:child_process");
 const fs = require("node:fs");
 const path = require("node:path");
 const { pathToFileURL } = require("node:url");
@@ -159,8 +159,8 @@ const EXTENSION_COLOR_MAP = new Map([
 ]);
 
 function printUsage() {
-  console.log("Usage: node last-commit-message.js [--limit <count>] [--page <number>] [--page-size <count>] [--links <plain|path|file|vscode|cursor|visualstudio>] [--open <cursor|code|vscode|visualstudio|none>] [--ext <extensions>] [--path <path>] [repo-path]");
-  console.log("Example: node last-commit-message.js --open cursor --page-size 20 --links path --path environments/prod --ext xaml,cs,js /path/to/repo");
+  console.log("Usage: node last-commit-message.js [--limit <count>] [--page <number>] [--page-size <count>] [--links <plain|path|file|vscode|cursor|visualstudio>] [--ext <extensions>] [--path <path>] [repo-path]");
+  console.log("Example: node last-commit-message.js --page-size 20 --links path --path environments/prod --ext xaml,cs,js /path/to/repo");
 }
 
 function parseArgs(args) {
@@ -168,7 +168,6 @@ function parseArgs(args) {
     extensions: [],
     limit: 100,
     linkMode: "path",
-    openMode: "cursor",
     page: 1,
     pageSpecified: false,
     pageSize: 20,
@@ -240,7 +239,7 @@ function parseArgs(args) {
         throw new Error(`Missing value for ${arg}`);
       }
 
-      options.openMode = parseOpenMode(value);
+      parseOpenMode(value);
       index += 1;
       continue;
     }
@@ -301,12 +300,12 @@ function parseArgs(args) {
     }
 
     if (arg.startsWith("--open=")) {
-      options.openMode = parseOpenMode(arg.slice("--open=".length));
+      parseOpenMode(arg.slice("--open=".length));
       continue;
     }
 
     if (arg.startsWith("--editor=")) {
-      options.openMode = parseOpenMode(arg.slice("--editor=".length));
+      parseOpenMode(arg.slice("--editor=".length));
       continue;
     }
 
@@ -530,34 +529,107 @@ function buildPathspecs(extensions, paths) {
   });
 }
 
-function formatRow(item, repoPath, linkMode, rowNumber, width, commitEmojiMap) {
-  const color = colorForExtension(item.file);
+function formatRow(item, repoPath, linkMode, commitEmojiMap) {
   const commitMark = commitEmojiMap.get(item.commit) || "▫️";
-  const number = `${String(rowNumber).padStart(width, " ")}.`;
-
-  return `${DIM}${number}${RESET} ${commitMark} ${color}${formatFile(item.file, repoPath, linkMode)}${RESET}`;
+  return `${commitMark} ${formatFile(item.file, repoPath, linkMode)}${RESET}`;
 }
 
 function formatFile(file, repoPath, linkMode) {
   const absolutePath = path.resolve(repoPath, file);
+  const displayedPath = linkMode === "path" || linkMode === "visualstudio"
+    ? absolutePath
+    : file;
+  const coloredPath = colorizePath(displayedPath);
 
   if (linkMode === "path" || linkMode === "visualstudio") {
-    return absolutePath;
+    return hyperlink(coloredPath, pathToFileURL(absolutePath).href);
   }
 
   if (linkMode === "file") {
-    return hyperlink(file, pathToFileURL(absolutePath).href);
+    return hyperlink(coloredPath, pathToFileURL(absolutePath).href);
   }
 
   if (linkMode === "vscode") {
-    return hyperlink(file, editorUri("vscode", absolutePath));
+    return hyperlink(coloredPath, editorUri("vscode", absolutePath));
   }
 
   if (linkMode === "cursor") {
-    return hyperlink(file, editorUri("cursor", absolutePath));
+    return hyperlink(coloredPath, editorUri("cursor", absolutePath));
   }
 
-  return file;
+  return coloredPath;
+}
+
+function colorizePath(file) {
+  const parts = file.split(/([\\/])/);
+  const lastSegmentIndex = parts.reduce(
+    (lastIndex, part, index) => part !== "/" && part !== "\\" && part !== "" ? index : lastIndex,
+    -1,
+  );
+
+  return parts.map((part, index) => {
+    if (part === "/" || part === "\\") {
+      return `${DIM}${part}${RESET}`;
+    }
+
+    if (part === "") {
+      return part;
+    }
+
+    if (index === lastSegmentIndex) {
+      return `${colorForExtension(part)}${part}${RESET}`;
+    }
+
+    return `${colorForPathSegment(part)}${part}${RESET}`;
+  }).join("");
+}
+
+function colorForPathSegment(segment) {
+  const hash = stableTextHash(segment.toLowerCase());
+  const hue = hash % 360;
+  const saturation = 72 + ((hash >>> 8) % 17);
+  const lightness = 62 + ((hash >>> 16) % 10);
+  const [red, green, blue] = hslToRgb(hue, saturation, lightness);
+  return `\u001b[38;2;${red};${green};${blue}m`;
+}
+
+function stableTextHash(value) {
+  let hash = 2166136261;
+
+  for (const char of value) {
+    hash ^= char.charCodeAt(0);
+    hash = Math.imul(hash, 16777619);
+  }
+
+  return hash >>> 0;
+}
+
+function hslToRgb(hue, saturation, lightness) {
+  const normalizedSaturation = saturation / 100;
+  const normalizedLightness = lightness / 100;
+  const chroma = (1 - Math.abs(2 * normalizedLightness - 1)) * normalizedSaturation;
+  const hueSection = hue / 60;
+  const secondary = chroma * (1 - Math.abs((hueSection % 2) - 1));
+  let red = 0;
+  let green = 0;
+  let blue = 0;
+
+  if (hueSection < 1) {
+    [red, green] = [chroma, secondary];
+  } else if (hueSection < 2) {
+    [red, green] = [secondary, chroma];
+  } else if (hueSection < 3) {
+    [green, blue] = [chroma, secondary];
+  } else if (hueSection < 4) {
+    [green, blue] = [secondary, chroma];
+  } else if (hueSection < 5) {
+    [red, blue] = [secondary, chroma];
+  } else {
+    [red, blue] = [chroma, secondary];
+  }
+
+  const match = normalizedLightness - chroma / 2;
+  return [red, green, blue].map((component) => Math.round((component + match) * 255));
 }
 
 function colorForExtension(file) {
@@ -639,21 +711,21 @@ function displayPage(files, options, page, commitEmojiMap) {
   }
 
   const firstRowNumber = pageStart + 1;
-  const rowNumberWidth = String(Math.min(files.length, pageStart + pageFiles.length)).length;
-
   console.log(`${DIM}Showing ${firstRowNumber}-${pageStart + pageFiles.length} of ${files.length} changed files. Page ${page}/${totalPages}.${RESET}`);
 
-  for (let index = 0; index < pageFiles.length; index += 1) {
-    console.log(formatRow(pageFiles[index], options.repoPath, options.linkMode, firstRowNumber + index, rowNumberWidth, commitEmojiMap));
+  for (const item of pageFiles) {
+    console.log(formatRow(item, options.repoPath, options.linkMode, commitEmojiMap));
   }
 
   return page < totalPages;
 }
 
-function waitForNextAction(files, options, hasNextPage) {
+let swallowLeadingLineFeed = false;
+
+function waitForNextAction(hasNextPage) {
   const prompt = hasNextPage
-    ? "Enter next page, number opens file, q quits..."
-    : "Number opens file, Enter or q quits...";
+    ? "Enter continues, q quits..."
+    : "Enter or q quits...";
   process.stdout.write(`${DIM}${prompt}${RESET}`);
 
   const buffer = Buffer.alloc(1);
@@ -669,16 +741,25 @@ function waitForNextAction(files, options, hasNextPage) {
 
     const char = buffer.toString("utf8", 0, bytesRead);
 
+    if (swallowLeadingLineFeed) {
+      swallowLeadingLineFeed = false;
+
+      if (char === "\n") {
+        continue;
+      }
+    }
+
     if (char === "\n" || char === "\r") {
+      swallowLeadingLineFeed = char === "\r";
       process.stdout.write("\n");
-      return parseAction(input, files, options, hasNextPage);
+      return parseAction(input, hasNextPage);
     }
 
     input += char;
   }
 }
 
-function parseAction(input, files, options, hasNextPage) {
+function parseAction(input, hasNextPage) {
   const value = input.trim().toLowerCase();
 
   if (value === "") {
@@ -689,51 +770,8 @@ function parseAction(input, files, options, hasNextPage) {
     return "quit";
   }
 
-  if (/^\d+$/.test(value)) {
-    const rowNumber = Number.parseInt(value, 10);
-
-    if (rowNumber < 1 || rowNumber > files.length) {
-      console.error(`Error: row ${rowNumber} is out of range. Choose 1-${files.length}.`);
-      return "stay";
-    }
-
-    openFile(files[rowNumber - 1].file, options);
-    return "stay";
-  }
-
   console.error(`Error: unknown input: ${input.trim()}`);
   return "stay";
-}
-
-function openFile(file, options) {
-  if (!options.openMode) {
-    console.error("Error: no editor configured. Use --open cursor, --open vscode, or --open visualstudio.");
-    return;
-  }
-
-  const absolutePath = path.resolve(options.repoPath, file);
-  const command = editorCommand(options.openMode);
-  const result = spawnSync(command, [absolutePath], {
-    shell: false,
-    stdio: "ignore",
-    windowsHide: true,
-  });
-
-  if (result.error) {
-    console.error(`Error: unable to open ${absolutePath} with ${command}: ${result.error.message}`);
-  }
-}
-
-function editorCommand(openMode) {
-  if (openMode === "vscode") {
-    return "code";
-  }
-
-  if (openMode === "visualstudio") {
-    return "devenv";
-  }
-
-  return openMode;
 }
 
 function displayFiles(files, options) {
@@ -750,7 +788,7 @@ function displayFiles(files, options) {
     const hasNextPage = displayPage(files, options, page, commitEmojiMap);
 
     while (true) {
-      const action = waitForNextAction(files, options, hasNextPage);
+      const action = waitForNextAction(hasNextPage);
 
       if (action === "quit") {
         return;
